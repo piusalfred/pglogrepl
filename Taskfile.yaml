@@ -1,6 +1,18 @@
 version: '3'
 
+vars:
+  POSTGRES_VERSIONS: [ 15, 16, 17 ]
+  PGLOGREPL_TEST_CONN_STRING: 'postgres://pglogrepl:secret@127.0.0.1/pglogrepl?replication=database'
+
 tasks:
+  test-all:
+    desc: "runs the tests for all postgres versions"
+    cmds:
+      - for: [15, 16, 17]
+        task: test-one
+        desc: "runs the tests for postgres version {{.ITEM}}"
+        vars:
+          POSTGRES_VERSION: "{{.ITEM}}"
   upgrade:
     cmds:
       - go get -u ./...
@@ -13,6 +25,19 @@ tasks:
       - gofumpt -l -w .
       - go mod tidy
       - gci write --skip-generated -s standard -s default .
-  test:
+  database-down:
     cmds:
-      - go test -v -race -coverpkg=./... -parallel=4 ./...
+      - docker compose down postgres
+  test-one:
+    desc: "runs the tests for postgres version {{.POSTGRES_VERSION}}"
+    deps:
+      - database-down
+    cmds:
+      - POSTGRES_VERSION={{.POSTGRES_VERSION}} docker compose up -d postgres
+      - sleep 5
+      - PGLOGREPL_TEST_CONN_STRING={{.PGLOGREPL_TEST_CONN_STRING}} go test -v -race ./...
+      - docker compose down postgres
+    requires:
+      vars:
+        - name: POSTGRES_VERSION
+          enum: [ 15, 16, 17 ]
