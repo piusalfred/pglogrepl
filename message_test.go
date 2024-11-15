@@ -54,6 +54,7 @@ func (s *messageSuite) newRelationID() uint32 {
 func (s *messageSuite) putString(dst []byte, value string) int {
 	copy(dst, value)
 	dst[len(value)] = byte(0)
+
 	return len(value) + 1
 }
 
@@ -65,6 +66,7 @@ func (s *messageSuite) tupleColumnLength(dataType uint8, data []byte) int {
 		return 1 + 4 + len(data)
 	default:
 		s.FailNow("invalid data type of a tuple: %c", dataType)
+
 		return 0
 	}
 }
@@ -101,7 +103,7 @@ func (s *messageSuite) putMessageTestData(msg []byte) *LogicalDecodingMessage {
 	bigEndian.PutUint32(msg[off:], uint32(len(content)))
 	off += 4
 
-	for i := 0; i < len(content); i++ {
+	for i := range len(content) {
 		msg[off] = content[i]
 		off++
 	}
@@ -304,7 +306,7 @@ func (s *messageSuite) createUpdateTestDataTypeK() ([]byte, *UpdateMessage) {
 	bigEndian.PutUint32(msg[off:], relationID)
 	off += 4
 	msg[off] = 'K'
-	off += 1
+	off++
 	bigEndian.PutUint16(msg[off:], 1)
 	off += 2
 	off += s.putTupleColumn(msg[off:], 't', oldCol1Data)
@@ -369,7 +371,7 @@ func (s *messageSuite) createUpdateTestDataTypeO() ([]byte, *UpdateMessage) {
 	bigEndian.PutUint32(msg[off:], relationID)
 	off += 4
 	msg[off] = 'O'
-	off += 1
+	off++
 	bigEndian.PutUint16(msg[off:], 2)
 	off += 2
 	off += s.putTupleColumn(msg[off:], 't', oldCol1Data)
@@ -513,7 +515,7 @@ func (s *messageSuite) createDeleteTestDataTypeO() ([]byte, *DeleteMessage) {
 	bigEndian.PutUint32(msg[off:], relationID)
 	off += 4
 	msg[off] = 'O'
-	off += 1
+	off++
 	bigEndian.PutUint16(msg[off:], 2)
 	off += 2
 	off += s.putTupleColumn(msg[off:], 't', oldCol1Data)
@@ -686,7 +688,6 @@ type relationMessageSuite struct {
 }
 
 func (s *relationMessageSuite) Test() {
-
 	msg, expected := s.createRelationTestData()
 
 	m, err := Parse(msg)
@@ -725,7 +726,6 @@ type insertMessageSuite struct {
 }
 
 func (s *insertMessageSuite) Test() {
-
 	msg, expected := s.createInsertTestData()
 
 	m, err := Parse(msg)

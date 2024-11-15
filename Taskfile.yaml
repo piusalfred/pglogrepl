@@ -1,0 +1,18 @@
+version: '3'
+
+tasks:
+  upgrade:
+    cmds:
+      - go get -u ./...
+      - go mod tidy
+  lint-check:
+    cmds:
+      - golangci-lint run
+  fmt:
+    cmds:
+      - gofumpt -l -w .
+      - go mod tidy
+      - gci write --skip-generated -s standard -s default .
+  test:
+    cmds:
+      - go test -v -race -coverpkg=./... -parallel=4 ./...

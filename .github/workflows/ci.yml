@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master,main]
   pull_request:
-    branches: [master]
+    branches: [master,main]
 
 jobs:
   test:
@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ["1.19", "1.20"]
-        pg-version: [13, 14, 15]
+        go-version: ["1.22", "1.23"]
+        pg-version: [15,16,17]
       fail-fast: false
     env:
       PGLOGREPL_TEST_CONN_STRING: "postgres://pglogrepl:secret@127.0.0.1/pglogrepl?replication=database"
