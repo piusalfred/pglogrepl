@@ -28,6 +28,11 @@ const (
 	StandbyStatusUpdateByteID     = 'r'
 )
 
+const (
+	ReplicationModeLogical  = "LOGICAL"
+	ReplicationModePhysical = "PHYSICAL"
+)
+
 type ReplicationMode int
 
 const (
@@ -35,13 +40,13 @@ const (
 	PhysicalReplication
 )
 
-// String formats the mode into a postgres valid string
+// String formats the mode into a postgres valid string.
 func (mode ReplicationMode) String() string {
-	if mode == LogicalReplication {
-		return "LOGICAL"
-	} else {
-		return "PHYSICAL"
+	if mode == PhysicalReplication {
+		return ReplicationModePhysical
 	}
+
+	return ReplicationModeLogical
 }
 
 // LSN is a PostgreSQL Log Sequence Number. See https://www.postgresql.org/docs/current/datatype-pg-lsn.html.
@@ -80,7 +85,7 @@ func (lsn *LSN) Scan(src interface{}) error {
 			return err
 		}
 	default:
-		return fmt.Errorf("can not scan %T to LSN", src)
+		return fmt.Errorf("%w: can not scan %T to LSN", ErrBadMessage, src)
 	}
 
 	return nil
@@ -126,21 +131,21 @@ func ParseIdentifySystem(mrr *pgconn.MultiResultReader) (IdentifySystemResult, e
 	var isr IdentifySystemResult
 	results, err := mrr.ReadAll()
 	if err != nil {
-		return isr, err
+		return isr, fmt.Errorf("read all: %w", err)
 	}
 
 	if len(results) != 1 {
-		return isr, fmt.Errorf("expected 1 result set, got %d", len(results))
+		return isr, fmt.Errorf("%w: expected 1 result set, got %d", ErrBadMessage, len(results))
 	}
 
 	result := results[0]
 	if len(result.Rows) != 1 {
-		return isr, fmt.Errorf("expected 1 result row, got %d", len(result.Rows))
+		return isr, fmt.Errorf("%w: expected 1 result row, got %d", ErrBadMessage, len(result.Rows))
 	}
 
 	row := result.Rows[0]
 	if len(row) != 4 {
-		return isr, fmt.Errorf("expected 4 result columns, got %d", len(row))
+		return isr, fmt.Errorf("%w: expected 4 result columns, got %d", ErrBadMessage, len(row))
 	}
 
 	isr.SystemID = string(row[0])
@@ -169,7 +174,12 @@ type TimelineHistoryResult struct {
 // TimelineHistory executes the TIMELINE_HISTORY command.
 func TimelineHistory(ctx context.Context, conn *pgconn.PgConn, timeline int32) (TimelineHistoryResult, error) {
 	sql := fmt.Sprintf("TIMELINE_HISTORY %d", timeline)
-	return ParseTimelineHistory(conn.Exec(ctx, sql))
+	history, err := ParseTimelineHistory(conn.Exec(ctx, sql))
+	if err != nil {
+		return TimelineHistoryResult{}, fmt.Errorf("parse timeline history: %w", err)
+	}
+
+	return history, nil
 }
 
 // ParseTimelineHistory parses the result of the TIMELINE_HISTORY command.
@@ -177,25 +187,26 @@ func ParseTimelineHistory(mrr *pgconn.MultiResultReader) (TimelineHistoryResult,
 	var thr TimelineHistoryResult
 	results, err := mrr.ReadAll()
 	if err != nil {
-		return thr, err
+		return thr, fmt.Errorf("read all: %w", err)
 	}
 
 	if len(results) != 1 {
-		return thr, fmt.Errorf("expected 1 result set, got %d", len(results))
+		return thr, fmt.Errorf("%w: expected 1 result set, got %d", ErrBadMessage, len(results))
 	}
 
 	result := results[0]
 	if len(result.Rows) != 1 {
-		return thr, fmt.Errorf("expected 1 result row, got %d", len(result.Rows))
+		return thr, fmt.Errorf("%w: expected 1 result row, got %d", ErrBadMessage, len(result.Rows))
 	}
 
 	row := result.Rows[0]
 	if len(row) != 2 {
-		return thr, fmt.Errorf("expected 2 result columns, got %d", len(row))
+		return thr, fmt.Errorf("%w: expected 2 result columns, got %d", ErrBadMessage, len(row))
 	}
 
 	thr.FileName = string(row[0])
 	thr.Content = row[1]
+
 	return thr, nil
 }
 
@@ -225,7 +236,11 @@ func CreateReplicationSlot(
 	if options.Temporary {
 		temporaryString = "TEMPORARY"
 	}
-	sql := fmt.Sprintf("CREATE_REPLICATION_SLOT %s %s %s %s %s", slotName, temporaryString, options.Mode, outputPlugin, options.SnapshotAction)
+	sql := fmt.Sprintf(
+		"CREATE_REPLICATION_SLOT %s %s %s %s %s",
+		slotName, temporaryString, options.Mode, outputPlugin, options.SnapshotAction,
+	)
+
 	return ParseCreateReplicationSlot(conn.Exec(ctx, sql))
 }
 
@@ -234,21 +249,21 @@ func ParseCreateReplicationSlot(mrr *pgconn.MultiResultReader) (CreateReplicatio
 	var crsr CreateReplicationSlotResult
 	results, err := mrr.ReadAll()
 	if err != nil {
-		return crsr, err
+		return crsr, fmt.Errorf("read all: %w", err)
 	}
 
 	if len(results) != 1 {
-		return crsr, fmt.Errorf("expected 1 result set, got %d", len(results))
+		return crsr, fmt.Errorf("%w: expected 1 result set, got %d", ErrBadMessage, len(results))
 	}
 
 	result := results[0]
 	if len(result.Rows) != 1 {
-		return crsr, fmt.Errorf("expected 1 result row, got %d", len(result.Rows))
+		return crsr, fmt.Errorf("%w, expected 1 result row, got %d", ErrBadMessage, len(result.Rows))
 	}
 
 	row := result.Rows[0]
 	if len(row) != 4 {
-		return crsr, fmt.Errorf("expected 4 result columns, got %d", len(row))
+		return crsr, fmt.Errorf("%w: expected 4 result columns, got %d", ErrBadMessage, len(row))
 	}
 
 	crsr.SlotName = string(row[0])
@@ -264,14 +279,17 @@ type DropReplicationSlotOptions struct {
 }
 
 // DropReplicationSlot drops a logical replication slot.
-func DropReplicationSlot(ctx context.Context, conn *pgconn.PgConn, slotName string, options DropReplicationSlotOptions) error {
+func DropReplicationSlot(ctx context.Context, conn *pgconn.PgConn,
+	slotName string, options DropReplicationSlotOptions,
+) error {
 	var waitString string
 	if options.Wait {
 		waitString = "WAIT"
 	}
 	sql := fmt.Sprintf("DROP_REPLICATION_SLOT %s %s", slotName, waitString)
 	_, err := conn.Exec(ctx, sql).ReadAll()
-	return err
+
+	return fmt.Errorf("exec: %w", err)
 }
 
 type StartReplicationOptions struct {
@@ -280,30 +298,37 @@ type StartReplicationOptions struct {
 	PluginArgs []string
 }
 
-type errEndTimeline struct {
+type endTimelineError struct {
 	nextTli         int64
 	nextTliStartpos LSN
 }
 
-func (e errEndTimeline) Error() string {
+func (e endTimelineError) Error() string {
 	return "start replication with a switch point"
 }
 
-func (e errEndTimeline) ErrEndTimeline() (int64, LSN) {
+func (e endTimelineError) EndTimelineError() (int64, LSN) {
 	return e.nextTli, e.nextTliStartpos
 }
 
-func IsErrEndTimeline(err error) (int64, LSN, bool) {
+func IsEndTimelineError(err error) (int64, LSN, bool) {
 	e, ok := err.(interface{ ErrEndTimeline() (int64, LSN) })
 	if !ok {
 		return 0, 0, false
 	}
 	nextTli, nextTliStartpos := e.ErrEndTimeline()
+
 	return nextTli, nextTliStartpos, true
 }
 
 // StartReplication begins the replication process by executing the START_REPLICATION command.
-func StartReplication(ctx context.Context, conn *pgconn.PgConn, slotName string, startLSN LSN, options StartReplicationOptions) error {
+func StartReplication( //nolint:gocyclo // this function is complex
+	ctx context.Context,
+	conn *pgconn.PgConn,
+	slotName string,
+	startLSN LSN,
+	options StartReplicationOptions,
+) error {
 	var timelineString string
 	if options.Timeline > 0 {
 		timelineString = fmt.Sprintf("TIMELINE %d", options.Timeline)
@@ -344,29 +369,30 @@ func StartReplication(ctx context.Context, conn *pgconn.PgConn, slotName string,
 			return nil
 		case *pgproto3.RowDescription:
 			if options.Mode != PhysicalReplication {
-				return fmt.Errorf("received row RowDescription message in logical replication")
+				return fmt.Errorf("%w: received row RowDescription message in logical replication", ErrBadMessage)
 			}
-			if len(msg.Fields) != 2 || string(msg.Fields[0].Name) != "next_tli" || string(msg.Fields[1].Name) != "next_tli_startpos" {
-				return fmt.Errorf("expected next timeline row description message")
+			if len(msg.Fields) != 2 || string(msg.Fields[0].Name) != "next_tli" ||
+				string(msg.Fields[1].Name) != "next_tli_startpos" {
+				return fmt.Errorf("%w: expected next timeline row description message", ErrBadMessage)
 			}
 		case *pgproto3.DataRow:
 			if cnt := len(msg.Values); cnt != 2 {
-				return fmt.Errorf("expected next_tli and next_tli_startpos, got %d fields", cnt)
+				return fmt.Errorf("%w: expected next_tli and next_tli_startpos, got %d fields", ErrBadMessage, cnt)
 			}
 			tmpNextTli, tmpNextTliStartpos := string(msg.Values[0]), string(msg.Values[1])
 			nextTli, err = strconv.ParseInt(tmpNextTli, 10, 64)
 			if err != nil {
-				return err
+				return fmt.Errorf("data row parse next_tli: %w", err)
 			}
 			nextTliStartpos, err = ParseLSN(tmpNextTliStartpos)
 			if err != nil {
-				return err
+				return fmt.Errorf("data row parse next_tli_startpos: %w", err)
 			}
 		case *pgproto3.CommandComplete:
 		case *pgproto3.ReadyForQuery:
 			// if no next timeline switch result, maybe it was left on the connection
 			if nextTli > 0 && nextTliStartpos > 0 {
-				return errEndTimeline{nextTli: nextTli, nextTliStartpos: nextTliStartpos}
+				return endTimelineError{nextTli: nextTli, nextTliStartpos: nextTliStartpos}
 			}
 		default:
 			return fmt.Errorf("unexpected response type: %T", msg)
@@ -375,16 +401,20 @@ func StartReplication(ctx context.Context, conn *pgconn.PgConn, slotName string,
 }
 
 type BaseBackupOptions struct {
-	// Request information required to generate a progress report, but might as such have a negative impact on the performance.
+	// Request information required to generate a progress report, but might as such have a negative
+	// impact on the performance.
 	Progress bool
 	// Sets the label of the backup. If none is specified, a backup label of 'wal-g' will be used.
 	Label string
 	// Request a fast checkpoint.
 	Fast bool
-	// Include the necessary WAL segments in the backup. This will include all the files between start and stop backup in the pg_wal directory of the base directory tar file.
+	// Include the necessary WAL segments in the backup. This will include all the files between start and
+	// stop backup in the pg_wal directory of the base directory tar file.
 	WAL bool
-	// By default, the backup will wait until the last required WAL segment has been archived, or emit a warning if log archiving is not enabled.
-	// Specifying NOWAIT disables both the waiting and the warning, leaving the client responsible for ensuring the required log is available.
+	// By default, the backup will wait until the last required WAL segment has been archived, or emit a warning
+	// if log archiving is not enabled.
+	// Specifying NOWAIT disables both the waiting and the warning, leaving the client responsible for ensuring
+	// the required log is available.
 	NoWait bool
 	// Limit (throttle) the maximum amount of data transferred from server to client per unit of time (kb/s).
 	MaxRate int32
@@ -436,17 +466,18 @@ func (bbo BaseBackupOptions) sql(serverVersion int) string {
 	if serverVersion >= 15 {
 		return "BASE_BACKUP(" + strings.Join(parts, ", ") + ")"
 	}
+
 	return "BASE_BACKUP " + strings.Join(parts, " ")
 }
 
-// BaseBackupTablespace represents a tablespace in the backup
+// BaseBackupTablespace represents a tablespace in the backup.
 type BaseBackupTablespace struct {
 	OID      int32
 	Location string
 	Size     int8
 }
 
-// BaseBackupResult will hold the return values  of the BaseBackup command
+// BaseBackupResult will hold the return values  of the BaseBackup command.
 type BaseBackupResult struct {
 	LSN         LSN
 	TimelineID  int32
@@ -459,11 +490,19 @@ func serverMajorVersion(conn *pgconn.PgConn) (int, error) {
 	if dot == -1 {
 		return 0, fmt.Errorf("bad server version string: '%s'", verString)
 	}
-	return strconv.Atoi(verString[:dot])
+	version, err := strconv.Atoi(verString[:dot])
+	if err != nil {
+		return 0, fmt.Errorf("bad server version string: '%s'", verString)
+	}
+
+	return version, nil
 }
 
 // StartBaseBackup begins the process for copying a basebackup by executing the BASE_BACKUP command.
-func StartBaseBackup(ctx context.Context, conn *pgconn.PgConn, options BaseBackupOptions) (result BaseBackupResult, err error) {
+func StartBaseBackup(ctx context.Context, conn *pgconn.PgConn,
+	options BaseBackupOptions,
+) (BaseBackupResult, error) {
+	var result BaseBackupResult
 	serverVersion, err := serverMajorVersion(conn)
 	if err != nil {
 		return result, err
@@ -475,18 +514,25 @@ func StartBaseBackup(ctx context.Context, conn *pgconn.PgConn, options BaseBacku
 	if err != nil {
 		return result, fmt.Errorf("failed to send BASE_BACKUP: %w", err)
 	}
-	// From here Postgres returns result sets, but pgconn has no infrastructure to properly capture them.
-	// So we capture data low level with sub functions, before we return from this function when we get to the CopyData part.
+	// From here Postgres returns result sets, but pgconn has no infrastructure to properly
+	// capture them. So we capture data low level with sub functions, before we return from
+	// this function when we get to the CopyData part.
 	result.LSN, result.TimelineID, err = getBaseBackupInfo(ctx, conn)
 	if err != nil {
 		return result, err
 	}
 	result.Tablespaces, err = getTableSpaceInfo(ctx, conn)
+
 	return result, err
 }
 
-// getBaseBackupInfo returns the start or end position of the backup as returned by Postgres
-func getBaseBackupInfo(ctx context.Context, conn *pgconn.PgConn) (start LSN, timelineID int32, err error) {
+// getBaseBackupInfo returns the start or end position of the backup as returned by Postgres.
+func getBaseBackupInfo(ctx context.Context, conn *pgconn.PgConn) (LSN, int32, error) {
+	var (
+		start      LSN
+		timelineID int32
+	)
+
 	for {
 		msg, err := conn.ReceiveMessage(ctx)
 		if err != nil {
@@ -524,15 +570,21 @@ func getBaseBackupInfo(ctx context.Context, conn *pgconn.PgConn) (start LSN, tim
 		case *pgproto3.CommandComplete:
 			return start, timelineID, nil
 		case *pgproto3.ErrorResponse:
-			return start, timelineID, fmt.Errorf("error response sev=%q code=%q message=%q detail=%q position=%d", msg.Severity, msg.Code, msg.Message, msg.Detail, msg.Position)
+			return start, timelineID,
+				fmt.Errorf(
+					"error response sev=%q code=%q message=%q detail=%q position=%d",
+					msg.Severity, msg.Code, msg.Message, msg.Detail, msg.Position,
+				)
 		default:
 			return start, timelineID, fmt.Errorf("unexpected response type: %T", msg)
 		}
 	}
 }
 
-// getBaseBackupInfo returns the start or end position of the backup as returned by Postgres
-func getTableSpaceInfo(ctx context.Context, conn *pgconn.PgConn) (tbss []BaseBackupTablespace, err error) {
+// getBaseBackupInfo returns the start or end position of the backup as returned by Postgres.
+func getTableSpaceInfo(ctx context.Context, conn *pgconn.PgConn) ([]BaseBackupTablespace, error) {
+	var tbss []BaseBackupTablespace
+
 	for {
 		msg, err := conn.ReceiveMessage(ctx)
 		if err != nil {
@@ -587,9 +639,8 @@ func getTableSpaceInfo(ctx context.Context, conn *pgconn.PgConn) (tbss []BaseBac
 	}
 }
 
-// NextTableSpace consumes some msgs so we are at start of CopyData
-func NextTableSpace(ctx context.Context, conn *pgconn.PgConn) (err error) {
-
+// NextTableSpace consumes some msgs so we are at start of CopyData.
+func NextTableSpace(ctx context.Context, conn *pgconn.PgConn) error {
 	for {
 		msg, err := conn.ReceiveMessage(ctx)
 		if err != nil {
@@ -613,10 +664,15 @@ func NextTableSpace(ctx context.Context, conn *pgconn.PgConn) (err error) {
 }
 
 // FinishBaseBackup wraps up a backup after copying all results from the BASE_BACKUP command.
-func FinishBaseBackup(ctx context.Context, conn *pgconn.PgConn) (result BaseBackupResult, err error) {
+func FinishBaseBackup(ctx context.Context, conn *pgconn.PgConn) (BaseBackupResult, error) {
+	var (
+		result BaseBackupResult
+		err    error
+	)
 
-	// From here Postgres returns result sets, but pgconn has no infrastructure to properly capture them.
-	// So we capture data low level with sub functions, before we return from this function when we get to the CopyData part.
+	// From here Postgres returns result sets, but pgconn has no infrastructure to properly
+	// capture them. So we capture data low level with sub functions, before we return from
+	// this function when we get to the CopyData part.
 	result.LSN, result.TimelineID, err = getBaseBackupInfo(ctx, conn)
 	if err != nil {
 		return result, err
@@ -625,7 +681,7 @@ func FinishBaseBackup(ctx context.Context, conn *pgconn.PgConn) (result BaseBack
 	// Base_Backup done, server send a command complete response from pg13
 	vmaj, err := serverMajorVersion(conn)
 	if err != nil {
-		return
+		return result, err
 	}
 	var (
 		pack pgproto3.BackendMessage
@@ -634,26 +690,25 @@ func FinishBaseBackup(ctx context.Context, conn *pgconn.PgConn) (result BaseBack
 	if vmaj > 12 {
 		pack, err = conn.ReceiveMessage(ctx)
 		if err != nil {
-			return
+			return result, fmt.Errorf("failed to receive message: %w", err)
 		}
 		_, ok = pack.(*pgproto3.CommandComplete)
 		if !ok {
-			err = fmt.Errorf("expect command_complete, got %T", pack)
-			return
+			return result, fmt.Errorf("%w: expect command_complete, got %T", ErrBadMessage, pack)
 		}
 	}
 
 	// simple query done, server send a ready for query response
 	pack, err = conn.ReceiveMessage(ctx)
 	if err != nil {
-		return
+		return result, fmt.Errorf("failed to receive message: %w", err)
 	}
 	_, ok = pack.(*pgproto3.ReadyForQuery)
 	if !ok {
-		err = fmt.Errorf("expect ready_for_query, got %T", pack)
-		return
+		return result, fmt.Errorf("%w: expect ready_for_query, got %T", ErrBadMessage, pack)
 	}
-	return
+
+	return result, nil
 }
 
 type PrimaryKeepaliveMessage struct {
@@ -738,10 +793,14 @@ func SendStandbyStatusUpdate(_ context.Context, conn *pgconn.PgConn, ssu Standby
 	cd := &pgproto3.CopyData{Data: data}
 	buf, err := cd.Encode(nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("encode: %w", err)
 	}
 
-	return conn.Frontend().SendUnbufferedEncodedCopyData(buf)
+	if err := conn.Frontend().SendUnbufferedEncodedCopyData(buf); err != nil {
+		return fmt.Errorf("send: %w", err)
+	}
+
+	return nil
 }
 
 // CopyDoneResult is the parsed result as returned by the server after the client
@@ -753,20 +812,22 @@ type CopyDoneResult struct {
 
 // SendStandbyCopyDone sends a StandbyCopyDone to the PostgreSQL server
 // to confirm ending the copy-both mode.
-func SendStandbyCopyDone(_ context.Context, conn *pgconn.PgConn) (cdr *CopyDoneResult, err error) {
+func SendStandbyCopyDone(_ context.Context, conn *pgconn.PgConn) (*CopyDoneResult, error) {
+	var cdr *CopyDoneResult
+	var err error
 	// I am suspicious that this is wildly wrong, but I'm pretty sure the previous
 	// code was wildly wrong too -- wttw <steve@blighty.com>
 	conn.Frontend().Send(&pgproto3.CopyDone{})
 	err = conn.Frontend().Flush()
 	if err != nil {
-		return
+		return nil, fmt.Errorf("send: %w", err)
 	}
 
 	for {
 		var msg pgproto3.BackendMessage
 		msg, err = conn.Frontend().Receive()
 		if err != nil {
-			return cdr, err
+			return cdr, fmt.Errorf("receive: %w", err)
 		}
 
 		switch m := msg.(type) {
@@ -792,7 +853,7 @@ func SendStandbyCopyDone(_ context.Context, conn *pgconn.PgConn) (cdr *CopyDoneR
 			return cdr, pgconn.ErrorResponseToPgError(m)
 		case *pgproto3.ReadyForQuery:
 			// Should we eat the ReadyForQuery here, or not?
-			return cdr, err
+			return cdr, err //nolint: wrapcheck // no need to wrap here
 		}
 	}
 }
@@ -801,10 +862,12 @@ const microsecFromUnixEpochToY2K = 946684800 * 1000000
 
 func pgTimeToTime(microsecSinceY2K int64) time.Time {
 	microsecSinceUnixEpoch := microsecFromUnixEpochToY2K + microsecSinceY2K
+
 	return time.Unix(0, microsecSinceUnixEpoch*1000)
 }
 
 func timeToPgTime(t time.Time) int64 {
 	microsecSinceUnixEpoch := t.Unix()*1000000 + int64(t.Nanosecond())/1000
+
 	return microsecSinceUnixEpoch - microsecFromUnixEpochToY2K
 }

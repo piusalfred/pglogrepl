@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/piusalfred/pglogrepl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -75,8 +75,10 @@ func (s *lsnSuite) TestValueInterface() {
 	s.Equal("16/B374D848", lsnStr)
 }
 
-const slotName = "pglogrepl_test"
-const outputPlugin = "test_decoding"
+const (
+	slotName     = "pglogrepl_test"
+	outputPlugin = "test_decoding"
+)
 
 func closeConn(t testing.TB, conn *pgconn.PgConn) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -357,8 +359,8 @@ func TestBaseBackup(t *testing.T) {
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, startRes.TimelineID, int32(1))
 
-	//Write the tablespaces
-	for i := 0; i < len(startRes.Tablespaces)+1; i++ {
+	// Write the tablespaces
+	for i := range len(startRes.Tablespaces) {
 		f, err := os.CreateTemp("", fmt.Sprintf("pglogrepl_test_tbs_%d.tar", i))
 		require.NoError(t, err)
 		err = pglogrepl.NextTableSpace(context.Background(), conn)

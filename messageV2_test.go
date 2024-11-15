@@ -2,8 +2,9 @@ package pglogrepl
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/suite"
 	"testing"
+
+	"github.com/stretchr/testify/suite"
 )
 
 func TestLogicalDecodingMessageV2Suite(t *testing.T) {

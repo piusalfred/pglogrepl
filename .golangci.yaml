@@ -1,0 +1,72 @@
+linters-settings:
+  gosec:
+    excludes:
+      - G115
+      - G109
+  funlen:
+    lines: 70
+  gocyclo:
+    min-complexity: 20
+  gocognit:
+    min-complexity: 45
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files.
+    - path: _test\.go$
+      linters:
+        - gocyclo
+        - errcheck
+        - funlen
+        - goerr113
+        - gocognit
+        - dupl
+        - gosec
+        - lll
+  exclude-dirs:
+    - example
+    - mocks
+  exclude-files:
+    - _test\.go$
+linters:
+  # enable all available linters
+  enable-all: true
+  # enable some additional linters that are not enabled by default
+  disable:
+    - paralleltest
+    - testifylint
+    - err113
+    - funlen
+    - cyclop
+    - testpackage
+    - prealloc
+    - execinquery
+    - rowserrcheck
+    - sqlclosecheck
+    - wsl
+    - gomnd
+    - mnd
+    - tagliatelle
+    - musttag
+    - exhaustruct
+    - wastedassign
+    - dupword
+    - varnamelen
+    - depguard
+    - forbidigo
+    - exportloopref
+    - ireturn
+
+output:
+  formats:
+    - format: colored-line-number
+      path: stdout
+  sort-results: true
+  sort-order:
+    - linter
+    - severity
+    - file # filepath, line, and column.
+  show-stats: true
+run:
+  go: '1.23'
+  concurrency: 5
+  timeout: 5m
