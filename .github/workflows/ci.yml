@@ -25,7 +25,7 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
       - name: Stand up Postgres ${{ matrix.pg-version }}
-        run: docker-compose up -d postgres
+        run: docker compose up -d postgres
         env:
           POSTGRES_VERSION: ${{ matrix.pg-version }}
       - name: Run tests
