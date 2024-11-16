@@ -2,8 +2,9 @@ package pglogrepl
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/suite"
 	"testing"
+
+	"github.com/stretchr/testify/suite"
 )
 
 func TestLogicalDecodingMessageV2Suite(t *testing.T) {
@@ -198,7 +199,8 @@ func (s *relationMessageV2Suite) Test() {
 	relMsg, ok := m.(*RelationMessageV2)
 	s.True(ok)
 	s.Equal(xid, relMsg.Xid)
-	s.Equal(expected, &relMsg.RelationMessage)
+	relationMessage := &relMsg.RelationMessage
+	s.Equal(expected, relationMessage)
 }
 
 func (s *relationMessageV2Suite) TestNoStream() {

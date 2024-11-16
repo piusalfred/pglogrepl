@@ -6,15 +6,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/piusalfred/pglogrepl"
 )
 
 const slotName = "pglogrepl_demo"
 
 func main() {
-
 	conn, err := pgconn.Connect(context.Background(), os.Getenv("PGLOGREPL_DEMO_CONN_STRING"))
 	if err != nil {
 		log.Fatalln("failed to connect to PostgreSQL server:", err)
@@ -97,7 +96,6 @@ func main() {
 		default:
 			log.Printf("Received unexpected message: %#v\n", msg)
 		}
-
 	}
 	copyDoneResult, err := pglogrepl.SendStandbyCopyDone(context.Background(), conn)
 	if err != nil {
@@ -122,7 +120,7 @@ func main() {
 	cancel()
 	if err != nil {
 		if pgconn.Timeout(err) {
-			//continue
+			// continue
 		}
 		log.Fatalln("ReceiveMessage failed:", err)
 	}
@@ -153,5 +151,4 @@ func main() {
 	default:
 		log.Printf("Received unexpected message: %#v\n", msg)
 	}
-
 }

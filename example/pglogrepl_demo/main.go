@@ -6,16 +6,16 @@ import (
 	"os"
 	"time"
 
-	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/piusalfred/pglogrepl"
 )
 
 func main() {
 	//	const outputPlugin = "test_decoding"
 	const outputPlugin = "pgoutput"
-	//const outputPlugin = "wal2json"
+	// const outputPlugin = "wal2json"
 	conn, err := pgconn.Connect(context.Background(), os.Getenv("PGLOGREPL_DEMO_CONN_STRING"))
 	if err != nil {
 		log.Fatalln("failed to connect to PostgreSQL server:", err)
@@ -184,7 +184,7 @@ func processV2(walData []byte, relations map[uint32]*pglogrepl.RelationMessageV2
 				values[colName] = nil
 			case 'u': // unchanged toast
 				// This TOAST value was not changed. TOAST values are not stored in the tuple, and logical replication doesn't want to spend a disk read to fetch its value for you.
-			case 't': //text
+			case 't': // text
 				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
 				if err != nil {
 					log.Fatalln("error decoding column data:", err)
@@ -254,7 +254,7 @@ func processV1(walData []byte, relations map[uint32]*pglogrepl.RelationMessage, 
 				values[colName] = nil
 			case 'u': // unchanged toast
 				// This TOAST value was not changed. TOAST values are not stored in the tuple, and logical replication doesn't want to spend a disk read to fetch its value for you.
-			case 't': //text
+			case 't': // text
 				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
 				if err != nil {
 					log.Fatalln("error decoding column data:", err)

@@ -2,6 +2,7 @@ package pglogrepl
 
 import (
 	"encoding/binary"
+	"fmt"
 	"time"
 )
 
@@ -21,7 +22,7 @@ type StreamStartMessageV2 struct {
 }
 
 // DecodeV2 decodes to message from V2 src.
-func (m *StreamStartMessageV2) DecodeV2(src []byte, _ bool) (err error) {
+func (m *StreamStartMessageV2) DecodeV2(src []byte, _ bool) error {
 	if len(src) < 5 {
 		return m.lengthError("StreamStartMessageV2", 5, len(src))
 	}
@@ -42,7 +43,7 @@ type StreamStopMessageV2 struct {
 }
 
 // DecodeV2 decodes to message from V2 src.
-func (m *StreamStopMessageV2) DecodeV2(_ []byte, _ bool) (err error) {
+func (m *StreamStopMessageV2) DecodeV2(_ []byte, _ bool) error {
 	// stream stop has no data.
 	m.SetType(MessageTypeStreamStop)
 
@@ -61,7 +62,7 @@ type StreamCommitMessageV2 struct {
 }
 
 // DecodeV2 decodes to message from V2 src.
-func (m *StreamCommitMessageV2) DecodeV2(src []byte, _ bool) (err error) {
+func (m *StreamCommitMessageV2) DecodeV2(src []byte, _ bool) error {
 	if len(src) < 29 {
 		return m.lengthError("StreamCommitMessageV2", 29, len(src))
 	}
@@ -69,7 +70,7 @@ func (m *StreamCommitMessageV2) DecodeV2(src []byte, _ bool) (err error) {
 	m.Xid, used = m.decodeUint32(src)
 	low += used
 	m.Flags = src[low]
-	low += 1
+	low++
 	m.CommitLSN, used = m.decodeLSN(src[low:])
 	low += used
 	m.TransactionEndLSN, used = m.decodeLSN(src[low:])
@@ -91,7 +92,7 @@ type StreamAbortMessageV2 struct {
 }
 
 // DecodeV2 decodes to message from V2 src.
-func (m *StreamAbortMessageV2) DecodeV2(src []byte, _ bool) (err error) {
+func (m *StreamAbortMessageV2) DecodeV2(src []byte, _ bool) error {
 	if len(src) < 8 {
 		return m.lengthError("StreamAbortMessageV2", 8, len(src))
 	}
@@ -109,12 +110,15 @@ func (m *StreamAbortMessageV2) DecodeV2(src []byte, _ bool) (err error) {
 // ParseV2 parse a logical replication message from protocol version #2
 // it accepts a slice of bytes read from PG and inStream parameter
 // inStream must be true when StreamStartMessageV2 has been read
-// it must be false after StreamStopMessageV2 has been read
-func ParseV2(data []byte, inStream bool) (m Message, err error) {
-	var decoder MessageDecoder
+// it must be false after StreamStopMessageV2 has been read.
+func ParseV2(data []byte, inStream bool) (Message, error) {
+	var (
+		decoder MessageDecoder
+		err     error
+	)
 	msgType := MessageType(data[0])
 
-	switch msgType {
+	switch msgType { //nolint:exhaustive // all message types are handled
 	case MessageTypeStreamStart:
 		decoder = new(StreamStartMessageV2)
 	case MessageTypeStreamStop:
@@ -147,16 +151,21 @@ func ParseV2(data []byte, inStream bool) (m Message, err error) {
 
 	if v2, ok := decoder.(MessageDecoderV2); ok {
 		if err = v2.DecodeV2(data[1:], inStream); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("decode v2: %w", err)
 		}
 	} else if err = decoder.Decode(data[1:]); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode v1: %w", err)
 	}
 
-	return decoder.(Message), nil
+	msg, ok := decoder.(Message)
+	if !ok {
+		return nil, fmt.Errorf("%w: failed to cast %T to Message", ErrBadMessage, decoder)
+	}
+
+	return msg, nil
 }
 
-// InStreamMessageV2WithXid is a V2 protocol message
+// InStreamMessageV2WithXid is a V2 protocol message.
 type InStreamMessageV2WithXid struct {
 	// Xid of the transaction (only present for streamed transactions).
 	Xid uint32
@@ -169,7 +178,7 @@ type LogicalDecodingMessageV2 struct {
 }
 
 // DecodeV2 decodes to message from V2 src.
-func (m *LogicalDecodingMessageV2) DecodeV2(src []byte, inStream bool) (err error) {
+func (m *LogicalDecodingMessageV2) DecodeV2(src []byte, inStream bool) error {
 	if !inStream {
 		return m.LogicalDecodingMessage.Decode(src)
 	}
@@ -180,7 +189,12 @@ func (m *LogicalDecodingMessageV2) DecodeV2(src []byte, inStream bool) (err erro
 
 	src = readXidAndAdvance(src, &m.InStreamMessageV2WithXid, inStream)
 
-	return m.LogicalDecodingMessage.Decode(src)
+	err := m.LogicalDecodingMessage.Decode(src)
+	if err != nil {
+		return fmt.Errorf("decode logical decoding message: %w", err)
+	}
+
+	return nil
 }
 
 // RelationMessageV2 is a relation message.
@@ -190,7 +204,7 @@ type RelationMessageV2 struct {
 }
 
 // DecodeV2 decodes to message from V2 src.
-func (m *RelationMessageV2) DecodeV2(src []byte, inStream bool) (err error) {
+func (m *RelationMessageV2) DecodeV2(src []byte, inStream bool) error {
 	if !inStream {
 		return m.RelationMessage.Decode(src)
 	}
@@ -211,7 +225,7 @@ type TypeMessageV2 struct {
 }
 
 // DecodeV2 decodes to message from V2 src.
-func (m *TypeMessageV2) DecodeV2(src []byte, inStream bool) (err error) {
+func (m *TypeMessageV2) DecodeV2(src []byte, inStream bool) error {
 	if !inStream {
 		return m.TypeMessage.Decode(src)
 	}
@@ -232,7 +246,7 @@ type InsertMessageV2 struct {
 }
 
 // DecodeV2 decodes to message from V2 src.
-func (m *InsertMessageV2) DecodeV2(src []byte, inStream bool) (err error) {
+func (m *InsertMessageV2) DecodeV2(src []byte, inStream bool) error {
 	if !inStream {
 		return m.InsertMessage.Decode(src)
 	}
@@ -253,7 +267,7 @@ type UpdateMessageV2 struct {
 }
 
 // DecodeV2 decodes to message from V2 src.
-func (m *UpdateMessageV2) DecodeV2(src []byte, inStream bool) (err error) {
+func (m *UpdateMessageV2) DecodeV2(src []byte, inStream bool) error {
 	if !inStream {
 		return m.UpdateMessage.Decode(src)
 	}
@@ -274,7 +288,7 @@ type DeleteMessageV2 struct {
 }
 
 // DecodeV2 decodes to message from V2 src.
-func (m *DeleteMessageV2) DecodeV2(src []byte, inStream bool) (err error) {
+func (m *DeleteMessageV2) DecodeV2(src []byte, inStream bool) error {
 	if !inStream {
 		return m.DeleteMessage.Decode(src)
 	}
@@ -295,7 +309,7 @@ type TruncateMessageV2 struct {
 }
 
 // DecodeV2 decodes to message from V2 src.
-func (m *TruncateMessageV2) DecodeV2(src []byte, inStream bool) (err error) {
+func (m *TruncateMessageV2) DecodeV2(src []byte, inStream bool) error {
 	if !inStream {
 		return m.TruncateMessage.Decode(src)
 	}

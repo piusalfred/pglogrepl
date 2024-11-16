@@ -9,9 +9,7 @@ import (
 	"time"
 )
 
-var (
-	errMsgNotSupported = errors.New("replication message not supported")
-)
+var errMsgNotSupported = errors.New("replication message not supported")
 
 // MessageType indicates the type of a logical replication message.
 type MessageType uint8
@@ -76,7 +74,7 @@ type Message interface {
 
 // MessageDecoder decodes message into struct.
 type MessageDecoder interface {
-	Decode([]byte) error
+	Decode(src []byte) error
 }
 
 type baseMessage struct {
@@ -98,23 +96,23 @@ func (m *baseMessage) SetType(t MessageType) {
 // Decode parse src into message struct. The src must contain the complete message starts after
 // the first message type byte.
 func (m *baseMessage) Decode(_ []byte) error {
-	return fmt.Errorf("message decode not implemented")
+	return fmt.Errorf("%w: message decode not implemented", ErrNotImplemented)
 }
 
 func (m *baseMessage) lengthError(name string, expectedLen, actualLen int) error {
-	return fmt.Errorf("%s must have %d bytes, got %d bytes", name, expectedLen, actualLen)
+	return fmt.Errorf("%w: %s must have %d bytes, got %d bytes", ErrBadMessage, name, expectedLen, actualLen)
 }
 
 func (m *baseMessage) decodeStringError(name, field string) error {
-	return fmt.Errorf("%s.%s decode string error", name, field)
+	return fmt.Errorf("%w: %s.%s decode string error", ErrBadMessage, name, field)
 }
 
 func (m *baseMessage) decodeTupleDataError(name, field string, e error) error {
-	return fmt.Errorf("%s.%s decode tuple error: %s", name, field, e.Error())
+	return fmt.Errorf("%w: %s.%s decode tuple error: %w", ErrBadMessage, name, field, e)
 }
 
 func (m *baseMessage) invalidTupleTypeError(name, field string, e string, a byte) error {
-	return fmt.Errorf("%s.%s invalid tuple type value, expect %s, actual %c", name, field, e, a)
+	return fmt.Errorf("%w: %s.%s invalid tuple type value, expect %s, actual %c", ErrBadMessage, name, field, e, a)
 }
 
 // decodeString decode a string from src and returns the length of bytes being parsed.
@@ -155,13 +153,14 @@ func (m *baseMessage) decodeUint32(src []byte) (uint32, int) {
 
 func (m *baseMessage) decodeInt32(src []byte) (int32, int) {
 	asUint32, size := m.decodeUint32(src)
+
 	return int32(asUint32), size
 }
 
 // BeginMessage is a begin message.
 type BeginMessage struct {
 	baseMessage
-	//FinalLSN is the final LSN of the transaction.
+	// FinalLSN is the final LSN of the transaction.
 	FinalLSN LSN
 	// CommitTime is the commit timestamp of the transaction.
 	CommitTime time.Time
@@ -206,7 +205,7 @@ func (m *CommitMessage) Decode(src []byte) error {
 	}
 	var low, used int
 	m.Flags = src[0]
-	low += 1
+	low++
 	m.CommitLSN, used = m.decodeLSN(src[low:])
 	low += used
 	m.TransactionEndLSN, used = m.decodeLSN(src[low:])
@@ -298,7 +297,7 @@ func (m *RelationMessage) Decode(src []byte) error {
 	m.ColumnNum, used = m.decodeUint16(src[low:])
 	low += used
 
-	for i := 0; i < int(m.ColumnNum); i++ {
+	for i := range m.ColumnNum {
 		column := new(RelationMessageColumn)
 		column.Flags = src[low]
 		low++
@@ -376,7 +375,8 @@ type TupleDataColumn struct {
 	//	 Byte1('b') Identifies the data as binary value.
 	DataType uint8
 	Length   uint32
-	// Data is th value of the column, in text format. (A future release might support additional formats.) n is the above length.
+	// Data is th value of the column, in text format. (A future release might support additional formats.)
+	// n is the above length.
 	Data []byte
 }
 
@@ -387,7 +387,12 @@ func (c *TupleDataColumn) Int64() (int64, error) {
 			TupleDataTypeText, c.DataType)
 	}
 
-	return strconv.ParseInt(string(c.Data), 10, 64)
+	res, err := strconv.ParseInt(string(c.Data), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse column data as int64: %w", err)
+	}
+
+	return res, nil
 }
 
 // TupleData contains row change information.
@@ -404,10 +409,10 @@ func (m *TupleData) Decode(src []byte) (int, error) {
 	m.ColumnNum, used = m.decodeUint16(src)
 	low += used
 
-	for i := 0; i < int(m.ColumnNum); i++ {
+	for range int(m.ColumnNum) {
 		column := new(TupleDataColumn)
 		column.DataType = src[low]
-		low += 1
+		low++
 
 		switch column.DataType {
 		case TupleDataTypeText, TupleDataTypeBinary:
@@ -415,7 +420,7 @@ func (m *TupleData) Decode(src []byte) (int, error) {
 			low += used
 
 			column.Data = make([]byte, int(column.Length))
-			for j := 0; j < int(column.Length); j++ {
+			for j := range int(column.Length) {
 				column.Data[j] = src[low+j]
 			}
 			low += int(column.Length)
@@ -428,7 +433,7 @@ func (m *TupleData) Decode(src []byte) (int, error) {
 	return low, nil
 }
 
-// InsertMessage is a insert message
+// InsertMessage is a insert message.
 type InsertMessage struct {
 	baseMessage
 	// RelationID is the ID of the relation corresponding to the ID in the relation message.
@@ -448,7 +453,7 @@ func (m *InsertMessage) Decode(src []byte) error {
 	low += used
 
 	tupleType := src[low]
-	low += 1
+	low++
 	if tupleType != 'N' {
 		return m.invalidTupleTypeError("InsertMessage", "TupleType", "N", tupleType)
 	}
@@ -499,7 +504,8 @@ type UpdateMessage struct {
 }
 
 // Decode decodes to message from src.
-func (m *UpdateMessage) Decode(src []byte) (err error) {
+func (m *UpdateMessage) Decode(src []byte) error {
+	var err error
 	if len(src) < 6 {
 		return m.lengthError("UpdateMessage", 6, len(src))
 	}
@@ -522,6 +528,7 @@ func (m *UpdateMessage) Decode(src []byte) (err error) {
 		}
 		low += used
 		low++
+
 		fallthrough
 	case UpdateMessageTupleTypeNew:
 		m.NewTuple = new(TupleData)
@@ -566,7 +573,9 @@ type DeleteMessage struct {
 }
 
 // Decode decodes a message from src.
-func (m *DeleteMessage) Decode(src []byte) (err error) {
+func (m *DeleteMessage) Decode(src []byte) error {
+	var err error
+
 	if len(src) < 4 {
 		return m.lengthError("DeleteMessage", 4, len(src))
 	}
@@ -610,7 +619,7 @@ type TruncateMessage struct {
 }
 
 // Decode decodes to message from src.
-func (m *TruncateMessage) Decode(src []byte) (err error) {
+func (m *TruncateMessage) Decode(src []byte) error {
 	if len(src) < 9 {
 		return m.lengthError("TruncateMessage", 9, len(src))
 	}
@@ -623,7 +632,7 @@ func (m *TruncateMessage) Decode(src []byte) (err error) {
 	low++
 
 	m.RelationIDs = make([]uint32, m.RelationNum)
-	for i := 0; i < int(m.RelationNum); i++ {
+	for i := range int(m.RelationNum) {
 		m.RelationIDs[i], used = m.decodeUint32(src[low:])
 		low += used
 	}
@@ -644,7 +653,7 @@ type LogicalDecodingMessage struct {
 }
 
 // Decode decodes a message from src.
-func (m *LogicalDecodingMessage) Decode(src []byte) (err error) {
+func (m *LogicalDecodingMessage) Decode(src []byte) error {
 	if len(src) < 14 {
 		return m.lengthError("LogicalDecodingMessage", 14, len(src))
 	}
@@ -672,10 +681,11 @@ func (m *LogicalDecodingMessage) Decode(src []byte) (err error) {
 }
 
 // Parse parse a logical replication message.
-func Parse(data []byte) (m Message, err error) {
+func Parse(data []byte) (Message, error) {
+	var err error
 	var decoder MessageDecoder
 	msgType := MessageType(data[0])
-	switch msgType {
+	switch msgType { //nolint:exhaustive // All message types are handled.
 	case MessageTypeRelation:
 		decoder = new(RelationMessage)
 	case MessageTypeType:
@@ -699,15 +709,20 @@ func Parse(data []byte) (m Message, err error) {
 	}
 
 	if err = decoder.Decode(data[1:]); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode: %w", err)
 	}
 
-	return decoder.(Message), nil
+	msg, ok := decoder.(Message)
+	if !ok {
+		return nil, fmt.Errorf("type assertion: %w", err)
+	}
+
+	return msg, nil
 }
 
 func getCommonDecoder(msgType MessageType) MessageDecoder {
 	var decoder MessageDecoder
-	switch msgType {
+	switch msgType { //nolint:exhaustive // All message types are handled.
 	case MessageTypeBegin:
 		decoder = new(BeginMessage)
 	case MessageTypeCommit:
