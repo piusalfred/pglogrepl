@@ -21,6 +21,10 @@ jobs:
           go-version: '>=1.23.0'
       - name: Install Task
         uses: arduino/setup-task@v2
+      - name: Install Linter
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: 'v1.62.0'
       - name: Lint Check
         run: task lint-check
       - name: run test for pg version ${{ matrix.pg-version }}
