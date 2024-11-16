@@ -50,7 +50,7 @@ func (mode ReplicationMode) String() string {
 }
 
 // LSN is a PostgreSQL Log Sequence Number. See https://www.postgresql.org/docs/current/datatype-pg-lsn.html.
-type LSN uint64
+type LSN uint64 //nolint:recvcheck // leave it for now
 
 // String formats the LSN value into the XXX/XXX format which is the text format used by PostgreSQL.
 func (lsn LSN) String() string {
