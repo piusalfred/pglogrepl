@@ -66,6 +66,8 @@ PGLOGREPL_TEST_CONN_STRING=postgres://pglogrepl:secret@127.0.0.1/pglogrepl?repli
 ```
 
 ## Links
+- [PostgreSQL Logical Decoding Concepts](https://www.postgresql.org/docs/current/logicaldecoding-explanation.html#LOGICALDECODING-EXPLANATION)
+- [Streaming Replication protocol Interface](https://www.postgresql.org/docs/current/logicaldecoding-walsender.html)
 - [PostgreSQL Streaming Replication Protocol](https://www.postgresql.org/docs/current/protocol-replication.html)
 - [PostgreSQL Logical Streaming Replication Protocol](https://www.postgresql.org/docs/current/protocol-logical-replication.html)
 - [Replication Protocol Message Types](https://www.postgresql.org/docs/current/protocol-message-types.html)

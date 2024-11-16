@@ -19,6 +19,7 @@ tasks:
       - go mod tidy
   lint-check:
     cmds:
+      - go build ./...
       - golangci-lint run
   fmt:
     cmds:

@@ -297,7 +297,7 @@ func (m *RelationMessage) Decode(src []byte) error {
 	m.ColumnNum, used = m.decodeUint16(src[low:])
 	low += used
 
-	for i := range m.Columns {
+	for i := range m.ColumnNum {
 		column := new(RelationMessageColumn)
 		column.Flags = src[low]
 		low++
